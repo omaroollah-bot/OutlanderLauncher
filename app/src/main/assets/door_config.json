@@ -1,0 +1,25 @@
+{
+  "_aide": "Chaque entree ecoute un broadcast Android envoye par l'autoradio. Mettre enabled=true une fois l'action et les extras connus (voir README, section Diagnostic).",
+  "mappings": [
+    {
+      "enabled": false,
+      "action": "REMPLACER.PAR.ACTION.BOOLEENS",
+      "mode": "booleans",
+      "extras": {
+        "NOM_EXTRA_PORTE_AVANT_GAUCHE": "fl",
+        "NOM_EXTRA_PORTE_AVANT_DROITE": "fr",
+        "NOM_EXTRA_PORTE_ARRIERE_GAUCHE": "rl",
+        "NOM_EXTRA_PORTE_ARRIERE_DROITE": "rr",
+        "NOM_EXTRA_COFFRE": "tailgate",
+        "NOM_EXTRA_CAPOT": "hood"
+      }
+    },
+    {
+      "enabled": false,
+      "action": "REMPLACER.PAR.ACTION.BITMASK",
+      "mode": "bitmask",
+      "extra": "NOM_EXTRA_ENTIER",
+      "bits": { "0": "fl", "1": "fr", "2": "rl", "3": "rr", "4": "tailgate", "5": "hood" }
+    }
+  ]
+}
