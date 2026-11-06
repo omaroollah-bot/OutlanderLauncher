@@ -5,107 +5,69 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
-import android.util.Log
-import org.json.JSONObject
-import java.io.File
 
-/**
- * Lit l'etat des ouvrants envoye par l'autoradio/CANbus sous forme de broadcasts Android.
- * Les actions et les noms d'extras se reglent dans door_config.json (sans recompiler) :
- *   - fichier editable : <stockage>/Android/data/com.outlander.launcher/files/door_config.json
- *   - sinon le fichier par defaut dans assets/
- */
-class BroadcastDoorSource(private val ctx: Context) {
-    private val receivers = ArrayList<BroadcastReceiver>()
+class BroadcastDoorSource(
+    private val ctx: Context,
+    private var listener: ((Door, Boolean) -> Unit)? = null
+) {
+    private var isRegistered = false
+
+    fun setListener(cb: (Door, Boolean) -> Unit) {
+        listener = cb
+    }
+
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent == null) return
+            val extras = intent.extras ?: return
+
+            // Décodage standard CANbus RP5-MT-002 / Baogood / XYAUTO / TS
+            for (key in extras.keySet()) {
+                val k = key.lowercase()
+                val v = extras.get(key)
+                val isOpen = when (v) {
+                    is Boolean -> v
+                    is Int -> v != 0
+                    is Byte -> v.toInt() != 0
+                    is String -> v == "1" || v.equals("true", ignoreCase = true) || v.equals("open", ignoreCase = true)
+                    else -> false
+                }
+
+                when {
+                    k.contains("fl") || k.contains("front_left") || k.contains("left_front") -> listener?.invoke(Door.FRONT_LEFT, isOpen)
+                    k.contains("fr") || k.contains("front_right") || k.contains("right_front") -> listener?.invoke(Door.FRONT_RIGHT, isOpen)
+                    k.contains("rl") || k.contains("rear_left") || k.contains("left_rear") -> listener?.invoke(Door.REAR_LEFT, isOpen)
+                    k.contains("rr") || k.contains("rear_right") || k.contains("right_rear") -> listener?.invoke(Door.REAR_RIGHT, isOpen)
+                    k.contains("hood") || k.contains("bonnet") -> listener?.invoke(Door.HOOD, isOpen)
+                    k.contains("trunk") || k.contains("boot") || k.contains("tailgate") || k.contains("rear") -> listener?.invoke(Door.TRUNK, isOpen)
+                }
+            }
+        }
+    }
 
     fun start() {
-        try {
-            val cfg = loadConfig()
-            val arr = cfg.optJSONArray("mappings") ?: return
-            for (i in 0 until arr.length()) {
-                val m = arr.getJSONObject(i)
-                if (!m.optBoolean("enabled", true)) continue
-                val action = m.optString("action")
-                if (action.isEmpty()) continue
-                val r = object : BroadcastReceiver() {
-                    override fun onReceive(c: Context, intent: Intent) {
-                        try {
-                            apply(m, intent)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "mapping error", e)
-                        }
-                    }
-                }
-                val f = IntentFilter(action)
-                if (Build.VERSION.SDK_INT >= 33) {
-                    ctx.registerReceiver(r, f, Context.RECEIVER_EXPORTED)
-                } else {
-                    @Suppress("UnspecifiedRegisterReceiverFlag")
-                    ctx.registerReceiver(r, f)
-                }
-                receivers.add(r)
-                Log.i(TAG, "listening for $action")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "config error", e)
+        if (isRegistered) return
+        val filter = IntentFilter().apply {
+            addAction("com.outlander.launcher.DOOR_STATE")
+            addAction("com.ts.can.DOOR_INFO")
+            addAction("com.xyauto.broadcast.CANBUS_DOOR")
+            addAction("com.microntek.canbus.display")
+            addAction("autochips.intent.action.CANBUS_DOOR")
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ctx.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            ctx.registerReceiver(receiver, filter)
+        }
+        isRegistered = true
     }
 
     fun stop() {
-        for (r in receivers) {
-            try {
-                ctx.unregisterReceiver(r)
-            } catch (e: Exception) {
-                // deja retire
-            }
+        if (!isRegistered) return
+        try {
+            ctx.unregisterReceiver(receiver)
+        } catch (_: Exception) {
         }
-        receivers.clear()
-    }
-
-    private fun loadConfig(): JSONObject {
-        val ext = File(ctx.getExternalFilesDir(null), "door_config.json")
-        val text = if (ext.exists()) ext.readText()
-        else ctx.assets.open("door_config.json").bufferedReader().use { it.readText() }
-        return JSONObject(text)
-    }
-
-    @Suppress("DEPRECATION")
-    private fun apply(m: JSONObject, intent: Intent) {
-        val extras = intent.extras ?: return
-        when (m.optString("mode", "booleans")) {
-            "booleans" -> {
-                val map = m.getJSONObject("extras")
-                val keys = map.keys()
-                while (keys.hasNext()) {
-                    val extraName = keys.next()
-                    val door = Door.fromKey(map.getString(extraName)) ?: continue
-                    if (extras.containsKey(extraName)) {
-                        DoorStateHub.set(door, truthy(extras.get(extraName)))
-                    }
-                }
-            }
-            "bitmask" -> {
-                val v = (extras.get(m.getString("extra")) as? Number)?.toLong() ?: return
-                val bits = m.getJSONObject("bits")
-                val keys = bits.keys()
-                while (keys.hasNext()) {
-                    val bitIndex = keys.next()
-                    val door = Door.fromKey(bits.getString(bitIndex)) ?: continue
-                    val isSet = ((v shr bitIndex.toInt()) and 1L) == 1L
-                    DoorStateHub.set(door, isSet)
-                }
-            }
-        }
-    }
-
-    private fun truthy(v: Any?): Boolean = when (v) {
-        is Boolean -> v
-        is Number -> v.toInt() != 0
-        is String -> v == "1" || v.equals("true", true) || v.equals("open", true) || v.equals("on", true)
-        else -> false
-    }
-
-    companion object {
-        private const val TAG = "DoorSource"
+        isRegistered = false
     }
 }
