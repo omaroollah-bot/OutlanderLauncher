@@ -1,5 +1,6 @@
 package com.outlander.launcher
 
+import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.SurfaceTexture
@@ -15,12 +16,11 @@ import android.view.TextureView
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
+class MainActivity : Activity(), TextureView.SurfaceTextureListener {
 
     private lateinit var carTextureView: TextureView
     private lateinit var doorPanelView: DoorPanelView
@@ -59,15 +59,14 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         tvClock = findViewById(R.id.tvClock)
 
         pillButtons = mapOf(
-            Door.FRONT_LEFT to findViewById(R.id.pillFl),
-            Door.FRONT_RIGHT to findViewById(R.id.pillFr),
-            Door.REAR_LEFT to findViewById(R.id.pillRl),
-            Door.REAR_RIGHT to findViewById(R.id.pillRr),
-            Door.HOOD to findViewById(R.id.pillHood),
-            Door.TRUNK to findViewById(R.id.pillTrunk)
+            Door.FRONT_LEFT to findViewById<Button>(R.id.pillFl),
+            Door.FRONT_RIGHT to findViewById<Button>(R.id.pillFr),
+            Door.REAR_LEFT to findViewById<Button>(R.id.pillRl),
+            Door.REAR_RIGHT to findViewById<Button>(R.id.pillRr),
+            Door.HOOD to findViewById<Button>(R.id.pillHood),
+            Door.TRUNK to findViewById<Button>(R.id.pillTrunk)
         )
 
-        // Boutons de test / contrôle rapide des 6 ouvrants
         pillButtons.forEach { (door, btn) ->
             btn.setOnClickListener {
                 val newState = !(doorStates[door] ?: false)
@@ -81,9 +80,8 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             updateCockpitUI()
         }
 
-        // Configuration du Video Scrubbing 360° au doigt
         carTextureView.surfaceTextureListener = this
-        findViewById<View>(R.id.stageCard).setOnTouchListener { _, event ->
+        findViewById<View>(R.id.stageCard).setOnTouchListener { _: View, event: MotionEvent ->
             if (doorStates.values.any { it }) return@setOnTouchListener false
             val mp = mediaPlayer ?: return@setOnTouchListener false
 
@@ -111,7 +109,6 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             }
         }
 
-        // Raccourcis Dock CarPlay Gauche (ZhangXun B9320B / Zlink / Maps / Radio)
         findViewById<View>(R.id.btnNavCarplay).setOnClickListener {
             launchFirstAvailable(
                 "com.zhangxun.cp",
@@ -129,11 +126,10 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             launchFirstAvailable("com.android.dialer", "com.ts.bt")
         }
         findViewById<View>(R.id.btnOpenDiag).setOnClickListener {
-            startActivity(Intent(this, DiagnosticActivity::class.java))
+            startActivity(Intent(this@MainActivity, DiagnosticActivity::class.java))
         }
 
-        // Écouteur CANbus temps réel
-        doorSource = BroadcastDoorSource(this) { updatedDoor, isOpen ->
+        doorSource = BroadcastDoorSource(this) { updatedDoor: Door, isOpen: Boolean ->
             runOnUiThread {
                 doorStates[updatedDoor] = isOpen
                 updateCockpitUI()
