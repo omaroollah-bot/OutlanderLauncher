@@ -17,7 +17,8 @@ import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
@@ -33,6 +34,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     private var mediaPlayer: MediaPlayer? = null
+    private var videoSurface: Surface? = null
     private var lastTouchX = 0f
     private var doorSource: BroadcastDoorSource? = null
 
@@ -130,20 +132,21 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             startActivity(Intent(this, DiagnosticActivity::class.java))
         }
 
-        // Écouteur CANbus temps réel (BroadcastDoorSource créé par Claude)
+        // Écouteur CANbus temps réel
         doorSource = BroadcastDoorSource(this) { updatedDoor, isOpen ->
             runOnUiThread {
                 doorStates[updatedDoor] = isOpen
                 updateCockpitUI()
             }
         }
+
+        updateCockpitUI()
     }
 
     private fun updateCockpitUI() {
         doorPanelView.setAllDoors(doorStates)
         val openCount = doorStates.values.count { it }
 
-        // Mise à jour des 6 tuiles à droite
         val labels = mapOf(
             Door.FRONT_LEFT to "AV. G",
             Door.FRONT_RIGHT to "AV. D",
@@ -165,7 +168,6 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             )
         }
 
-        // Transition fluide entre Vidéo 360° (fermé) et Vue de haut (ouvert)
         if (openCount == 0) {
             doorPanelView.animate().alpha(0f).setDuration(220).start()
             carTextureView.animate().alpha(1f).setDuration(220).start()
@@ -184,9 +186,11 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
         try {
             val videoUri = Uri.parse("android.resource://$packageName/${R.raw.car_360}")
+            val s = Surface(surface)
+            videoSurface = s
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(this@MainActivity, videoUri)
-                setSurface(Surface(surface))
+                setSurface(s)
                 isLooping = true
                 setVolume(0f, 0f)
                 prepareAsync()
@@ -202,11 +206,15 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
+
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
         mediaPlayer?.release()
         mediaPlayer = null
+        videoSurface?.release()
+        videoSurface = null
         return true
     }
+
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
 
     private fun launchFirstAvailable(vararg packages: String) {
@@ -219,6 +227,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun hideSystemBars() {
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
